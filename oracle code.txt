@@ -1,0 +1,385 @@
+
+%sql
+alter table red_wine2 add seq_id Number ;
+%sql
+CREATE SEQUENCE s_v  START WITH 1 INCREMENT BY 1;
+%sql
+update red_wine2 
+set seq_id=s_v.nextval;
+%sql
+select * from red_wine2;
+%sql
+UPDATE red_wine2 SET quality = CASE WHEN quality<6 THEN '0'
+                               when quality>=6  then '1'
+                               END;
+							   
+%sql
+select * from red_wine2;
+%sql
+SELECT COUNT(*) FROM red_wine2;
+%sql
+select quality,count(*) as "number of wine"
+from red_wine2
+group by quality;
+%script
+drop view train;
+drop view test;
+CREATE OR REPLACE VIEW TRAIN AS SELECT * FROM red_wine2 SAMPLE (75) SEED (1);
+CREATE OR REPLACE VIEW TEST AS SELECT * FROM red_wine2 MINUS SELECT * FROM TRAIN;
+%script
+SELECT COUNT(*) FROM TRAIN;
+SELECT COUNT(*) FROM TEST;
+%sql
+select quality,count(*) as "number of wine"
+from train
+group by quality;
+
+%md
+#RANDOM FOREST
+
+%script
+drop table RF2_settings;
+CREATE TABLE RF2_SETTINGS (
+    SETTING_NAME VARCHAR2(200),
+    SETTING_VALUE VARCHAR2(200)
+);
+
+%script
+BEGIN
+
+  INSERT INTO RF2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.algo_name, dbms_data_mining.algo_random_forest);
+
+  INSERT INTO RF2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.prep_auto, dbms_data_mining.prep_auto_on);
+
+  INSERT INTO RF2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.RFOR_NUM_TREES, 50);
+
+END;
+
+%script
+BEGIN DBMS_DATA_MINING.DROP_MODEL('RF2_MODEL');
+EXCEPTION WHEN OTHERS THEN NULL; 
+END;
+/
+
+
+BEGIN
+
+   DBMS_DATA_MINING.CREATE_MODEL(
+      model_name          => 'RF2_Model',
+      mining_function     => dbms_data_mining.classification,
+      data_table_name     => 'TRAIN',
+      case_id_column_name =>  'seq_id',
+      target_column_name  => 'Quality',
+      settings_table_name => 'RF2_SETTINGS');
+END;
+%script
+drop table model2_result;
+BEGIN
+    DBMS_DATA_MINING.APPLY(
+        'RF2_model',
+        'TEST',
+         'seq_id',
+        'model2_result'
+    );
+END;
+/
+%script
+drop table confusion_matrix2;
+Declare ac Number;
+BEGIN
+
+DBMS_DATA_MINING.COMPUTE_CONFUSION_MATRIX (
+               accuracy                     =>  ac,
+               apply_result_table_name      => 'model2_result',
+               target_table_name            => 'TEST',
+               case_id_column_name          => 'seq_id',
+               target_column_name           => 'quality',
+               confusion_matrix_table_name  => 'confusion_matrix2',
+               score_column_name            => 'PREDICTION',
+               score_criterion_column_name  => 'PROBABILITY',
+
+               score_criterion_type         => 'PROBABILITY');
+               
+               
+  dbms_output.put_line('ACCURACY:'|| ac);
+
+END;
+%sql
+select quality,count(*) as "number of wine"
+from test
+group by quality;
+%sql
+select * from confusion_matrix2
+
+%md
+#DECISION TREE
+
+
+%script
+drop table DT2_settings;
+CREATE TABLE DT2_SETTINGS (
+    SETTING_NAME VARCHAR2(200),
+    SETTING_VALUE VARCHAR2(200)
+);
+
+%script
+BEGIN
+
+  INSERT INTO DT2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.algo_name, dbms_data_mining.algo_decision_tree);
+
+  INSERT INTO DT2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.prep_auto, dbms_data_mining.prep_auto_on);
+
+END;
+%script
+BEGIN DBMS_DATA_MINING.DROP_MODEL('DT2_MODEL');
+EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+
+BEGIN
+   DBMS_DATA_MINING.CREATE_MODEL(
+      model_name          => 'DT2_Model',
+      mining_function     => dbms_data_mining.classification,
+      data_table_name     => 'TRAIN',
+      case_id_column_name =>  'seq_id',
+      target_column_name  => 'Quality',
+      settings_table_name => 'DT2_SETTINGS');
+END;
+
+%script
+drop table DT_model2_result;
+BEGIN
+    DBMS_DATA_MINING.APPLY(
+        'DT2_model',
+        'TEST',
+         'seq_id',
+        'DT_model2_result'
+    );
+END;
+/
+%script
+drop table confusion_matrix_DT;
+Declare ac Number;
+BEGIN
+
+DBMS_DATA_MINING.COMPUTE_CONFUSION_MATRIX (
+               accuracy                     =>  ac,
+               apply_result_table_name      => 'DT_model2_result',
+               target_table_name            => 'TEST',
+               case_id_column_name          => 'seq_id',
+               target_column_name           => 'quality',
+               confusion_matrix_table_name  => 'confusion_matrix_DT',
+               score_column_name            => 'PREDICTION',
+               score_criterion_column_name  => 'PROBABILITY',
+
+               score_criterion_type         => 'PROBABILITY');
+               
+               
+  dbms_output.put_line('ACCURACY:'|| ac);
+
+END;
+%sql
+select * from confusion_matrix_DT;
+
+%md
+# NAIVE BAYES
+
+%sql
+CREATE TABLE NB2_SETTINGS (
+    SETTING_NAME VARCHAR2(200),
+    SETTING_VALUE VARCHAR2(200)
+);
+%script
+BEGIN
+
+  INSERT INTO NB2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.algo_name, dbms_data_mining.algo_naive_bayes);
+
+  INSERT INTO NB2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.prep_auto, dbms_data_mining.prep_auto_on);
+
+END;
+%script
+BEGIN
+
+   DBMS_DATA_MINING.CREATE_MODEL(
+      model_name          => 'NB2_Model',
+      mining_function     => dbms_data_mining.classification,
+      data_table_name     => 'TRAIN',
+      case_id_column_name =>  'seq_id',
+      target_column_name  => 'Quality',
+      settings_table_name => 'NB2_SETTINGS');
+END;
+
+%script
+BEGIN
+    DBMS_DATA_MINING.APPLY(
+        'NB2_model',
+        'TEST',
+         'seq_id',
+        'NB_model2_result'
+    );
+END;
+/
+%script
+Declare ac Number;
+BEGIN
+
+DBMS_DATA_MINING.COMPUTE_CONFUSION_MATRIX (
+               accuracy                     =>  ac,
+               apply_result_table_name      => 'NB_model2_result',
+               target_table_name            => 'TEST',
+               case_id_column_name          => 'seq_id',
+               target_column_name           => 'quality',
+               confusion_matrix_table_name  => 'confusion_matrix_NB',
+               score_column_name            => 'PREDICTION',
+               score_criterion_column_name  => 'PROBABILITY',
+
+               score_criterion_type         => 'PROBABILITY');
+               
+               
+  dbms_output.put_line('ACCURACY:'|| ac);
+
+END;
+%sql
+select * from confusion_matrix_NB;
+
+%md
+#SVM
+
+
+%script
+drop table svm2_settings;
+CREATE TABLE SVM2_SETTINGS (
+    SETTING_NAME VARCHAR2(200),
+    SETTING_VALUE VARCHAR2(200)
+);
+%script
+BEGIN
+
+  INSERT INTO SVM2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.algo_name, dbms_data_mining.algo_support_vector_machines);
+
+  INSERT INTO SVM2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.prep_auto, dbms_data_mining.prep_auto_on);
+
+END;
+%script
+BEGIN DBMS_DATA_MINING.DROP_MODEL('SVM2_MODEL');
+EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN
+
+   DBMS_DATA_MINING.CREATE_MODEL(
+      model_name          => 'SVM2_Model',
+      mining_function     => dbms_data_mining.classification,
+      data_table_name     => 'TRAIN',
+      case_id_column_name =>  'seq_id',
+      target_column_name  => 'Quality',
+      settings_table_name => 'SVM2_SETTINGS');
+END;
+%script
+drop table SVM_model2_result;
+BEGIN
+    DBMS_DATA_MINING.APPLY(
+        'SVM2_model',
+        'TEST',
+         'seq_id',
+        'SVM_model2_result'
+    );
+END;
+/
+%script
+drop table confusion_matrix_SVM;
+Declare ac Number;
+BEGIN
+
+DBMS_DATA_MINING.COMPUTE_CONFUSION_MATRIX (
+               accuracy                     =>  ac,
+               apply_result_table_name      => 'SVM_model2_result',
+               target_table_name            => 'TEST',
+               case_id_column_name          => 'seq_id',
+               target_column_name           => 'quality',
+               confusion_matrix_table_name  => 'confusion_matrix_SVM',
+               score_column_name            => 'PREDICTION',
+               score_criterion_column_name  => 'PROBABILITY',
+
+               score_criterion_type         => 'PROBABILITY');
+               
+               
+  dbms_output.put_line('ACCURACY:'|| ac);
+
+END;
+%sql
+select * from confusion_matrix_SVM;
+
+
+%md
+#Logistic Rgression
+
+
+%script
+CREATE TABLE LR2_SETTINGS (
+    SETTING_NAME VARCHAR2(200),
+    SETTING_VALUE VARCHAR2(200)
+);
+%script
+BEGIN
+
+  INSERT INTO LR2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.algo_name, dbms_data_mining.algo_GENERALIZED_LINEAR_MODEL);
+
+  INSERT INTO LR2_settings (setting_name, setting_value)
+  VALUES (dbms_data_mining.prep_auto, dbms_data_mining.prep_auto_on);
+
+END;
+%script
+BEGIN DBMS_DATA_MINING.DROP_MODEL('LR2_MODEL');
+EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN
+
+   DBMS_DATA_MINING.CREATE_MODEL(
+      model_name          => 'LR2_Model',
+      mining_function     => dbms_data_mining.classification,
+      data_table_name     => 'TRAIN',
+      case_id_column_name =>  'seq_id',
+      target_column_name  => 'Quality',
+      settings_table_name => 'LR2_SETTINGS');
+END;
+%script
+BEGIN
+    DBMS_DATA_MINING.APPLY(
+        'LR2_model',
+        'TEST',
+         'seq_id',
+        'LR_model2_result'
+    );
+END;
+/
+%script
+Declare ac Number;
+BEGIN
+
+DBMS_DATA_MINING.COMPUTE_CONFUSION_MATRIX (
+               accuracy                     =>  ac,
+               apply_result_table_name      => 'LR_model2_result',
+               target_table_name            => 'TEST',
+               case_id_column_name          => 'seq_id',
+               target_column_name           => 'quality',
+               confusion_matrix_table_name  => 'confusion_matrix_LR',
+               score_column_name            => 'PREDICTION',
+               score_criterion_column_name  => 'PROBABILITY',
+
+               score_criterion_type         => 'PROBABILITY');
+               
+               
+  dbms_output.put_line('ACCURACY:'|| ac);
+
+END;
+%sql
+select * from confusion_matrix_LR;
